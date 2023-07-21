@@ -83,6 +83,11 @@ defmodule EventsourceEx do
     parse_stream(data, parent, %EventsourceEx.Message{})
   end
 
+  defp parse_stream(["\r\n" | data], parent, message) do
+    if message.data, do: dispatch(parent, message)
+    parse_stream(data, parent, %EventsourceEx.Message{})
+  end
+
   defp parse_stream([line | data], parent, message) do
     message = parse(line, message)
     parse_stream(data, parent, message)
@@ -91,7 +96,10 @@ defmodule EventsourceEx do
   defp parse_stream([], _, message), do: message
 
   defp parse(raw_line, message) do
-    raw_line = String.trim_trailing(raw_line, "\n")
+    raw_line =
+      raw_line
+      |> String.trim_trailing("\r\n")
+      |> String.trim_trailing("\n")
 
     case raw_line do
       ":" <> _ ->
@@ -123,7 +131,11 @@ defmodule EventsourceEx do
   defp dispatch(parent, message) do
     # Remove single trailing \n from message.data if necessary
     message =
-      Map.put(message, :data, message.data |> String.replace_suffix("\n", ""))
+      Map.put(
+        message,
+        :data,
+        message.data |> String.replace_suffix("\r\n", "") |> String.replace_suffix("\n", "")
+      )
       # Add dispatch timestamp
       |> Map.put(:dispatch_ts, DateTime.utc_now())
 

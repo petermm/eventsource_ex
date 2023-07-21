@@ -83,4 +83,43 @@ defmodule EventsourceExTest do
 
     verify!()
   end
+
+  test "follows events with windows linebreaks" do
+    EventsourceExTest.HTTPoisonMock
+    |> expect(:get!, fn url, _headers, options ->
+      assert url == "https://a.test"
+      target = options[:stream_to]
+
+      [
+        ":ok\r\n\r\n",
+        "event: message\r\n",
+        "data: 1\r\n\r\n",
+        "event: message\r\n",
+        "data: 2\r\n\r\n",
+        "id: 3\r\n",
+        "data: 3\r\n\r\n",
+        "id: 4\r\ndata: 4",
+        "\r\n\r\n",
+        "data: fi",
+        "ve\r\n\r\n",
+        "data: 6\r\n",
+        "data: 7\r\n\r\n"
+      ]
+      |> Enum.map(&send(target, %{chunk: &1}))
+    end)
+
+    EventsourceEx.new("https://a.test",
+      stream_to: self(),
+      adapter: EventsourceExTest.HTTPoisonMock
+    )
+
+    assert_receive(%EventsourceEx.Message{data: "1", event: "message"})
+    assert_receive(%EventsourceEx.Message{data: "2", event: "message"})
+    assert_receive(%EventsourceEx.Message{id: "3", data: "3", event: "message"})
+    assert_receive(%EventsourceEx.Message{id: "4", data: "4", event: "message"})
+    assert_receive(%EventsourceEx.Message{data: "five", event: "message"})
+    assert_receive(%EventsourceEx.Message{data: "6\n7", event: "message"})
+
+    verify!()
+  end
 end
